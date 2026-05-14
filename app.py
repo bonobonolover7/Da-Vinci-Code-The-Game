@@ -3,7 +3,7 @@ import random
 import time
 
 # ==========================================
-# 1. 게임 로직 및 초정밀 AI
+# 1. 게임 로직 및 초정밀 AI (로직 보강)
 # ==========================================
 class DavinciCodeLogic:
     @staticmethod
@@ -18,7 +18,7 @@ class DavinciCodeLogic:
             st.session_state.player_names = ['나 (User)', '알파봇 1', '알파봇 2', '알파봇 3']
             st.session_state.players = {name: [] for name in st.session_state.player_names}
             st.session_state.turn_idx = 0
-            st.session_state.log = ["🎮 시스템: AI가 당신의 수순을 완벽하게 읽고 있습니다."]
+            st.session_state.log = ["🎮 게임 시작: 봇이 당신의 패를 노리고 있습니다."]
             st.session_state.status_msg = "게임을 시작합니다!"
             st.session_state.status_type = "info"
 
@@ -29,7 +29,6 @@ class DavinciCodeLogic:
 
     @staticmethod
     def ai_ultra_think(bot_name):
-        # 봇이 아는 정보 (자기 패 + 이미 까진 패)
         known_pool = []
         for name, hand in st.session_state.players.items():
             for t in hand:
@@ -38,136 +37,143 @@ class DavinciCodeLogic:
 
         targets = [n for n in st.session_state.player_names if n != bot_name]
         living_targets = [n for n in targets if any(not t['revealed'] for t in st.session_state.players[n])]
+        if not living_targets: return None
         
-        if not living_targets: return None, None, None, ""
-
-        best_move = None
-        min_candidates_count = 100
-
+        best_moves = []
         for t_p in living_targets:
             hand = st.session_state.players[t_p]
             for idx, tile in enumerate(hand):
                 if tile['revealed']: continue
-                
-                # 범위 계산 (정렬 기반)
                 min_v, max_v = -1, 12
                 for i in range(idx - 1, -1, -1):
                     if hand[i]['revealed']: min_v = int(hand[i]['value']); break
                 for i in range(idx + 1, len(hand)):
                     if hand[i]['revealed']: max_v = int(hand[i]['value']); break
                 
-                # 가능한 숫자들 필터링
                 candidates = [str(v) for v in range(min_v + 1, max_v) 
                               if f"{tile['color']}{v}" not in known_pool]
-                
                 if candidates:
-                    # 후보가 적을수록(즉, 확신이 높을수록) 우선순위 상승
-                    if len(candidates) < min_candidates_count:
-                        min_candidates_count = len(candidates)
-                        best_move = (t_p, idx, random.choice(candidates), f"확률 {100//len(candidates)}%")
-                    if len(candidates) == 1: break # 100% 정답 발견 시 중단
-            if min_candidates_count == 1: break
-
-        return best_move if best_move else (None, None, None, "")
+                    best_moves.append({'target': t_p, 'idx': idx, 'guess': random.choice(candidates), 'count': len(candidates)})
+        
+        if not best_moves: return None
+        # 후보가 가장 적은 순서(확률 높은 순서)로 정렬 후 최선의 수 선택
+        best_moves.sort(key=lambda x: x['count'])
+        return best_moves[0]
 
     @staticmethod
     def handle_guess(attacker, defender, idx, val):
         target_tile = st.session_state.players[defender][idx]
         if target_tile['value'] == val:
             target_tile['revealed'] = True
-            msg = f"🟢 정답입니다! {attacker}가 {defender}의 {idx+1}번 타일을 맞췄습니다."
+            msg = f"🟢 정답! {attacker} → {defender} [{idx+1}번: {val}]"
             st.session_state.status_msg = msg
             st.session_state.status_type = "success"
             st.session_state.log.insert(0, msg)
             return True
         else:
-            msg = f"🔴 틀렸습니다! {attacker}가 {defender}의 {idx+1}번을 {val}(으)로 추리했습니다."
+            msg = f"🔴 오답! {attacker} → {defender} [{idx+1}번을 {val}로 추측]"
             st.session_state.status_msg = msg
             st.session_state.status_type = "error"
             st.session_state.log.insert(0, msg)
             return False
 
 # ==========================================
-# 2. UI 렌더링
+# 2. UI 스타일 (정렬 문제 해결 핵심)
 # ==========================================
-st.set_page_config(page_title="Davinci Code Pro", layout="wide")
+st.set_page_config(page_title="Davinci Code AI", layout="wide")
 DavinciCodeLogic.init_game()
 
 st.markdown("""
     <style>
-    .tile-container { display: flex; gap: 8px; justify-content: center; padding: 10px; }
+    .player-row {
+        display: flex; align-items: center; padding: 15px;
+        margin-bottom: 10px; border-radius: 12px; background: #ffffff;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #eee;
+    }
+    .active-row { border: 2px solid #00FFAA !important; background: #f0fffb !important; }
+    .name-tag { width: 120px; font-weight: bold; font-size: 1.1em; color: #333; }
+    .tile-list { display: flex; gap: 8px; flex-wrap: wrap; }
     .tile {
-        width: 45px; height: 70px; border-radius: 6px;
+        width: 42px; height: 62px; border-radius: 6px;
         display: flex; align-items: center; justify-content: center;
-        font-size: 22px; font-weight: bold; border: 2px solid #333;
+        font-size: 20px; font-weight: bold; border: 2px solid #444;
+        transition: transform 0.2s;
     }
     .B { background: #222; color: white; }
     .W { background: #fff; color: #222; }
-    .revealed { border: 3px solid #FF4B4B !important; color: #FF4B4B !important; background: #ffebeb; }
-    .turn-box { border: 2px solid #00FFAA; background: rgba(0, 255, 170, 0.05); border-radius: 10px; padding: 10px; }
+    .revealed { border-color: #FF4B4B !important; color: #FF4B4B !important; position: relative; }
+    .revealed::after { content: '✔'; position: absolute; top: -10px; right: -5px; font-size: 14px; background: #FF4B4B; color: white; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; }
     </style>
 """, unsafe_allow_html=True)
 
+# 상단 알림
 if st.session_state.status_type == "success": st.success(st.session_state.status_msg)
 elif st.session_state.status_type == "error": st.error(st.session_state.status_msg)
 else: st.info(st.session_state.status_msg)
 
-# 보드 출력
+# ==========================================
+# 3. 보드 렌더링 (HTML 기반 가로 정렬)
+# ==========================================
 for name in st.session_state.player_names:
     is_me = (name == '나 (User)')
     is_curr = (name == st.session_state.player_names[st.session_state.turn_idx])
+    row_class = "player-row active-row" if is_curr else "player-row"
     
-    if is_curr: st.markdown('<div class="turn-box">', unsafe_allow_html=True)
-    c1, c2 = st.columns([1, 5])
-    c1.markdown(f"#### {'⭐' if is_curr else ''} {name}")
+    # 플레이어 한 줄 생성
+    html = f'<div class="{row_class}">'
+    html += f'<div class="name-tag">{"⭐ " if is_curr else ""}{name}</div>'
+    html += '<div class="tile-list">'
     
-    with c2:
-        cols = st.columns(12)
-        for i, t in enumerate(st.session_state.players[name]):
-            rev = "revealed" if t['revealed'] else ""
-            val = t['value'] if (t['revealed'] or is_me) else "?"
-            cols[i].markdown(f'<div class="tile {t["color"]} {rev}">{val}</div>', unsafe_allow_html=True)
-    if is_curr: st.markdown('</div>', unsafe_allow_html=True)
+    for i, t in enumerate(st.session_state.players[name]):
+        rev_class = "revealed" if t['revealed'] else ""
+        display_val = t['value'] if (t['revealed'] or is_me) else "?"
+        html += f'<div class="tile {t["color"]} {rev_class}">{display_val}</div>'
+    
+    html += '</div></div>'
+    st.markdown(html, unsafe_allow_html=True)
 
 st.divider()
 
 # ==========================================
-# 3. 컨트롤 섹션 (오류 수정됨)
+# 4. 게임 조작부
 # ==========================================
 curr_player = st.session_state.player_names[st.session_state.turn_idx]
 
 if curr_player == '나 (User)':
-    st.subheader("🎯 내 차례")
-    col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
-    with col1:
-        target_p = st.selectbox("공격 대상", [n for n in st.session_state.player_names if n != '나 (User)'])
-    with col2:
+    c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
+    with c1:
+        target_p = st.selectbox("🎯 공격 대상", [n for n in st.session_state.player_names if n != '나 (User)'])
+    with c2:
+        # 이미 공개된 타일 제외
         available_indices = [i for i, t in enumerate(st.session_state.players[target_p]) if not t['revealed']]
-        t_idx = st.selectbox("타일 위치", available_indices, format_func=lambda x: f"{x+1}번 타일") if available_indices else None
-    with col3:
-        guess_v = st.text_input("숫자")
-    with col4:
+        t_idx = st.selectbox("📍 타일 위치", available_indices, format_func=lambda x: f"{x+1}번 타일") if available_indices else None
+    with c3:
+        guess_v = st.text_input("🔢 숫자")
+    with c4:
         st.write("")
-        if st.button("추리 제출", use_container_width=True) and t_idx is not None:
+        if st.button("추리 실행", use_container_width=True) and t_idx is not None:
             if guess_v.isdigit():
-                hit = DavinciCodeLogic.handle_guess('나 (User)', target_p, t_idx, guess_v)
-                if not hit: st.session_state.turn_idx = (st.session_state.turn_idx + 1) % 4
+                if DavinciCodeLogic.handle_guess('나 (User)', target_p, t_idx, guess_v):
+                    pass # 정답이면 한 번 더 (옵션) 혹은 유지
+                else:
+                    st.session_state.turn_idx = (st.session_state.turn_idx + 1) % 4
                 st.rerun()
 else:
-    st.subheader(f"🤖 {curr_player} 차례")
+    st.subheader(f"🤖 {curr_player}가 계산 중...")
     if st.button(f"{curr_player} 행동 실행", use_container_width=True):
-        res = DavinciCodeLogic.ai_ultra_think(curr_player)
-        if res[0]:
-            target_p, t_idx, g_val, reason = res
-            # 오류 지점 수정: curr_name 대신 curr_player 사용
-            st.session_state.log.insert(0, f"🧠 {curr_player} 분석: {target_p}의 {t_idx+1}번은 {g_val} ({reason})")
-            hit = DavinciCodeLogic.handle_guess(curr_player, target_p, t_idx, g_val)
-            if not hit: st.session_state.turn_idx = (st.session_state.turn_idx + 1) % 4
+        move = DavinciCodeLogic.ai_ultra_think(curr_player)
+        if move:
+            st.session_state.log.insert(0, f"🧠 {curr_player} 분석: {move['target']}의 {move['idx']+1}번을 {move['guess']}로 추리 (확률 {100//move['count']}%)")
+            if DavinciCodeLogic.handle_guess(curr_player, move['target'], move['idx'], move['guess']):
+                pass 
+            else:
+                st.session_state.turn_idx = (st.session_state.turn_idx + 1) % 4
             st.rerun()
 
 with st.sidebar:
-    st.title("🛡️ 로그")
-    for l in st.session_state.log[:15]: st.caption(l)
+    st.title("📑 분석 로그")
+    for l in st.session_state.log[:15]:
+        st.caption(l)
     if st.button("🔄 리셋"):
         for k in list(st.session_state.keys()): del st.session_state[k]
         st.rerun()
