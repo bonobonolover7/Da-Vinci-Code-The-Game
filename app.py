@@ -15,11 +15,11 @@ class DavinciCodeLogic:
                     deck.append({'color': color, 'value': str(i), 'revealed': False})
             random.shuffle(deck)
             st.session_state.deck = deck
-            st.session_state.player_names = ['나 (User)', '알파봇 1', '알파봇 2', '알파봇 3']
+            st.session_state.player_names = ['나 (User)', '봇 1', '봇 2', '봇 3']
             st.session_state.players = {name: [] for name in st.session_state.player_names}
             st.session_state.wrong_guesses = [] # 🔥 [중요] 오답 메모리 저장소
             st.session_state.turn_idx = 0
-            st.session_state.log = ["🎮 시스템: 봇들이 이제 당신의 오답까지 기억하기 시작했습니다."]
+            st.session_state.log = ["🎮 시스템: 환영합니다!"]
             st.session_state.status_msg = "게임을 시작합니다!"
             st.session_state.status_type = "info"
 
